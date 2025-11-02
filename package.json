@@ -9,7 +9,8 @@
     "install-client": "cd client && npm install",
     "install-server": "npm install",
     "install-all": "npm install && cd client && npm install",
-    "build": "cd client && npm run build",
+    "build": "cd client && npm install && npm run build",
+    "postinstall": "cd client && npm install",
     "client": "cd client && npm start"
   },
   "keywords": [
