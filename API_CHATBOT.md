@@ -4,7 +4,7 @@ Esta documentación está específicamente diseñada para la integración del ch
 
 ## 🔗 URL Base
 
-**Producción:**
+**Producción (Railway):**
 ```
 https://horariossaladeconferencias-production.up.railway.app/api/horarios
 ```
@@ -13,6 +13,10 @@ https://horariossaladeconferencias-production.up.railway.app/api/horarios
 ```
 http://localhost:5000/api/horarios
 ```
+
+---
+
+> 📌 **NOTA:** Para una configuración rápida del chatbot, revisa `PROMPT_CHATBOT.md` que contiene un prompt listo para copiar y pegar.
 
 ## 📋 Operaciones Disponibles para el Chatbot
 
