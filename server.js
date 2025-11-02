@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const db = require('./database/db');
 const horariosRoutes = require('./routes/horarios');
+const usuariosRoutes = require('./routes/usuarios');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -17,6 +18,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Rutas API
 app.use('/api/horarios', horariosRoutes);
+app.use('/api/usuarios', usuariosRoutes);
 
 // Servir archivos estáticos del frontend en producción
 if (process.env.NODE_ENV === 'production') {

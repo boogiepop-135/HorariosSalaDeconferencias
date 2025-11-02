@@ -30,11 +30,36 @@ const horarioSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Usuario que reservó (referencia)
+  usuario_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Usuario',
+    default: null
+  },
+  // Información del usuario (duplicada para fácil acceso)
+  usuario_nombre: {
+    type: String,
+    default: null
+  },
+  usuario_telefono: {
+    type: String,
+    default: null,
+    index: true
+  },
   estado: {
     type: String,
-    enum: ['activo', 'cancelado'],
+    enum: ['activo', 'cancelado', 'no_asistio'],
     default: 'activo',
     index: true
+  },
+  // Registro si fue usado sin reserva
+  uso_sin_reserva: {
+    type: Boolean,
+    default: false
+  },
+  fecha_uso_sin_reserva: {
+    type: Date,
+    default: null
   },
   created_at: {
     type: Date,
@@ -51,8 +76,8 @@ const horarioSchema = new mongoose.Schema({
 // Índices compuestos para mejorar las consultas
 horarioSchema.index({ fecha: 1, hora_inicio: 1 });
 horarioSchema.index({ fecha: 1, estado: 1 });
+horarioSchema.index({ usuario_telefono: 1, fecha: 1 });
 
 const Horario = mongoose.model('Horario', horarioSchema);
 
 module.exports = Horario;
-

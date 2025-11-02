@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Horario = require('../database/models/Horario');
+const Usuario = require('../database/models/Usuario');
 
 // Función helper para verificar conflictos de horario
 const verificarConflicto = async (fecha, horaInicio, horaFin, estado = 'activo', excluirId = null) => {
@@ -90,14 +91,44 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST - Crear un nuevo horario
+// POST - Crear un nuevo horario (requiere usuario_telefono)
 router.post('/', async (req, res) => {
   try {
-    const { fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado } = req.body;
+    const { fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado, usuario_telefono } = req.body;
 
     // Validaciones
-    if (!fecha || !hora_inicio || !hora_fin || !titulo) {
-      res.status(400).json({ error: 'Faltan campos requeridos: fecha, hora_inicio, hora_fin, titulo' });
+    if (!fecha || !hora_inicio || !hora_fin || !titulo || !usuario_telefono) {
+      res.status(400).json({ error: 'Faltan campos requeridos: fecha, hora_inicio, hora_fin, titulo, usuario_telefono' });
+      return;
+    }
+
+    // Buscar o crear usuario por teléfono
+    let usuario = await Usuario.findOne({ telefono: usuario_telefono.trim() });
+    
+    if (!usuario) {
+      // Si no existe el usuario, necesitamos el nombre para crearlo
+      const { usuario_nombre } = req.body;
+      if (!usuario_nombre) {
+        res.status(400).json({ error: 'Usuario no existe. Se requiere usuario_nombre para crear nuevo usuario' });
+        return;
+      }
+      
+      // Crear nuevo usuario
+      usuario = new Usuario({
+        nombre: usuario_nombre.trim(),
+        telefono: usuario_telefono.trim(),
+        strikes: 0,
+        activo: true
+      });
+      await usuario.save();
+    }
+
+    // Verificar si el usuario tiene muchos strikes
+    if (usuario.tieneMuchosStrikes()) {
+      res.status(403).json({ 
+        error: 'Usuario tiene 3 o más strikes. No puede reservar la sala.',
+        strikes: usuario.strikes
+      });
       return;
     }
 
@@ -126,6 +157,9 @@ router.post('/', async (req, res) => {
       descripcion: descripcion || null,
       organizador: organizador || null,
       participantes: participantes || null,
+      usuario_id: usuario._id,
+      usuario_nombre: usuario.nombre,
+      usuario_telefono: usuario.telefono,
       estado: estado || 'activo'
     });
 
@@ -133,7 +167,13 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({
       id: horarioGuardado._id.toString(),
-      message: 'Horario creado exitosamente'
+      message: 'Horario creado exitosamente',
+      usuario: {
+        id: usuario._id.toString(),
+        nombre: usuario.nombre,
+        telefono: usuario.telefono,
+        strikes: usuario.strikes
+      }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -227,6 +267,177 @@ router.delete('/:id', async (req, res) => {
     res.json({
       message: 'Horario eliminado exitosamente'
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST - Marcar uso sin reserva (registra strike automáticamente)
+router.post('/:id/uso-sin-reserva', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { usuario_telefono } = req.body;
+
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400).json({ error: 'ID inválido' });
+      return;
+    }
+
+    const horario = await Horario.findById(id);
+
+    if (!horario) {
+      res.status(404).json({ error: 'Horario no encontrado' });
+      return;
+    }
+
+    // Buscar usuario por teléfono
+    let usuario = null;
+    if (usuario_telefono) {
+      usuario = await Usuario.findOne({ telefono: usuario_telefono.trim() });
+      
+      if (!usuario) {
+        // Crear usuario si no existe (necesitamos nombre)
+        const { usuario_nombre } = req.body;
+        if (usuario_nombre) {
+          usuario = new Usuario({
+            nombre: usuario_nombre.trim(),
+            telefono: usuario_telefono.trim(),
+            strikes: 0,
+            activo: true
+          });
+          await usuario.save();
+        }
+      }
+
+      // Agregar strike por usar sin reserva
+      if (usuario) {
+        await usuario.agregarStrike(
+          'Uso de sala sin reserva previa',
+          id
+        );
+      }
+    }
+
+    // Marcar horario como usado sin reserva
+    horario.uso_sin_reserva = true;
+    horario.fecha_uso_sin_reserva = new Date();
+    if (usuario) {
+      horario.usuario_id = usuario._id;
+      horario.usuario_nombre = usuario.nombre;
+      horario.usuario_telefono = usuario.telefono;
+    }
+    await horario.save();
+
+    res.json({
+      message: 'Uso sin reserva registrado',
+      strike_agregado: usuario ? true : false,
+      usuario: usuario ? {
+        id: usuario._id.toString(),
+        nombre: usuario.nombre,
+        strikes: usuario.strikes
+      } : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST - Marcar no asistencia (registra strike)
+router.post('/:id/no-asistio', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400).json({ error: 'ID inválido' });
+      return;
+    }
+
+    const horario = await Horario.findById(id);
+
+    if (!horario) {
+      res.status(404).json({ error: 'Horario no encontrado' });
+      return;
+    }
+
+    if (!horario.usuario_id) {
+      res.status(400).json({ error: 'Este horario no tiene usuario asociado' });
+      return;
+    }
+
+    // Buscar usuario y agregar strike
+    const usuario = await Usuario.findById(horario.usuario_id);
+    if (usuario) {
+      await usuario.agregarStrike(
+        'No asistió a la reserva sin cancelar',
+        id
+      );
+
+      // Marcar horario como no asistió
+      horario.estado = 'no_asistio';
+      await horario.save();
+
+      res.json({
+        message: 'No asistencia registrada y strike agregado',
+        usuario: {
+          id: usuario._id.toString(),
+          nombre: usuario.nombre,
+          strikes: usuario.strikes,
+          tiene_muchos_strikes: usuario.tieneMuchosStrikes()
+        }
+      });
+    } else {
+      res.status(404).json({ error: 'Usuario asociado no encontrado' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST - Registrar strike por no respetar horario
+router.post('/:id/strike', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400).json({ error: 'ID inválido' });
+      return;
+    }
+
+    if (!motivo) {
+      res.status(400).json({ error: 'Falta el motivo del strike' });
+      return;
+    }
+
+    const horario = await Horario.findById(id);
+
+    if (!horario) {
+      res.status(404).json({ error: 'Horario no encontrado' });
+      return;
+    }
+
+    if (!horario.usuario_id) {
+      res.status(400).json({ error: 'Este horario no tiene usuario asociado' });
+      return;
+    }
+
+    // Buscar usuario y agregar strike
+    const usuario = await Usuario.findById(horario.usuario_id);
+    if (usuario) {
+      await usuario.agregarStrike(motivo, id);
+
+      res.json({
+        message: 'Strike registrado exitosamente',
+        usuario: {
+          id: usuario._id.toString(),
+          nombre: usuario.nombre,
+          strikes: usuario.strikes,
+          tiene_muchos_strikes: usuario.tieneMuchosStrikes()
+        }
+      });
+    } else {
+      res.status(404).json({ error: 'Usuario asociado no encontrado' });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
