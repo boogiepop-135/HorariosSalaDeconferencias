@@ -26,10 +26,20 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Inicializar base de datos
-db.init();
+// Inicializar base de datos y luego iniciar servidor
+const startServer = async () => {
+  try {
+    await db.init();
+    console.log('Base de datos inicializada correctamente');
+    
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en puerto ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Error al iniciar el servidor:', error);
+    process.exit(1);
+  }
+};
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
-});
+startServer();
 

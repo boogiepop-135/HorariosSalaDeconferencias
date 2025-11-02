@@ -1,123 +1,159 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
+const Horario = require('../database/models/Horario');
+
+// Función helper para verificar conflictos de horario
+const verificarConflicto = async (fecha, horaInicio, horaFin, estado = 'activo', excluirId = null) => {
+  const query = {
+    fecha: fecha,
+    estado: estado,
+    $or: [
+      // Horario nuevo empieza dentro de otro horario
+      { 
+        hora_inicio: { $lte: horaInicio }, 
+        hora_fin: { $gt: horaInicio } 
+      },
+      // Horario nuevo termina dentro de otro horario
+      { 
+        hora_inicio: { $lt: horaFin }, 
+        hora_fin: { $gte: horaFin } 
+      },
+      // Horario nuevo contiene completamente a otro horario
+      { 
+        hora_inicio: { $gte: horaInicio }, 
+        hora_fin: { $lte: horaFin } 
+      }
+    ]
+  };
+
+  if (excluirId) {
+    query._id = { $ne: excluirId };
+  }
+
+  return await Horario.find(query);
+};
 
 // GET - Obtener todos los horarios
-router.get('/', (req, res) => {
-  const { fecha, estado } = req.query;
-  let query = 'SELECT * FROM horarios WHERE 1=1';
-  const params = [];
+router.get('/', async (req, res) => {
+  try {
+    const { fecha, estado } = req.query;
+    const query = {};
 
-  if (fecha) {
-    query += ' AND fecha = ?';
-    params.push(fecha);
-  }
-
-  if (estado) {
-    query += ' AND estado = ?';
-    params.push(estado);
-  }
-
-  query += ' ORDER BY fecha, hora_inicio';
-
-  db.getDb().all(query, params, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+    if (fecha) {
+      query.fecha = fecha;
     }
-    res.json(rows);
-  });
+
+    if (estado) {
+      query.estado = estado;
+    }
+
+    const horarios = await Horario.find(query)
+      .sort({ fecha: 1, hora_inicio: 1 })
+      .lean();
+
+    // Convertir _id a id para mantener compatibilidad con el frontend
+    const horariosFormateados = horarios.map(horario => ({
+      ...horario,
+      id: horario._id.toString()
+    }));
+
+    res.json(horariosFormateados);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET - Obtener un horario por ID
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  db.getDb().get('SELECT * FROM horarios WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400).json({ error: 'ID inválido' });
       return;
     }
-    if (!row) {
+
+    const horario = await Horario.findById(id).lean();
+
+    if (!horario) {
       res.status(404).json({ error: 'Horario no encontrado' });
       return;
     }
-    res.json(row);
-  });
+
+    // Convertir _id a id
+    res.json({
+      ...horario,
+      id: horario._id.toString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST - Crear un nuevo horario
-router.post('/', (req, res) => {
-  const { fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado } = req.body;
+router.post('/', async (req, res) => {
+  try {
+    const { fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado } = req.body;
 
-  // Validaciones
-  if (!fecha || !hora_inicio || !hora_fin || !titulo) {
-    res.status(400).json({ error: 'Faltan campos requeridos: fecha, hora_inicio, hora_fin, titulo' });
-    return;
-  }
-
-  // Verificar si hay conflicto de horarios
-  const checkConflictQuery = `
-    SELECT * FROM horarios 
-    WHERE fecha = ? 
-    AND estado = 'activo'
-    AND (
-      (hora_inicio <= ? AND hora_fin > ?) OR
-      (hora_inicio < ? AND hora_fin >= ?) OR
-      (hora_inicio >= ? AND hora_fin <= ?)
-    )
-  `;
-
-  db.getDb().all(checkConflictQuery, [fecha, hora_inicio, hora_inicio, hora_fin, hora_fin, hora_inicio, hora_fin], (err, conflicts) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
+    // Validaciones
+    if (!fecha || !hora_inicio || !hora_fin || !titulo) {
+      res.status(400).json({ error: 'Faltan campos requeridos: fecha, hora_inicio, hora_fin, titulo' });
       return;
     }
+
+    // Verificar si hay conflicto de horarios
+    const conflicts = await verificarConflicto(fecha, hora_inicio, hora_fin, estado || 'activo');
 
     if (conflicts && conflicts.length > 0) {
+      const conflictosFormateados = conflicts.map(conflict => ({
+        ...conflict.toObject(),
+        id: conflict._id.toString()
+      }));
+
       res.status(409).json({ 
         error: 'Conflicto de horario detectado',
-        conflictos: conflicts
+        conflictos: conflictosFormateados
       });
       return;
     }
 
-    // Insertar el nuevo horario
-    const insertQuery = `
-      INSERT INTO horarios (fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    db.getDb().run(insertQuery, [
-      fecha, hora_inicio, hora_fin, titulo, 
-      descripcion || null, 
-      organizador || null, 
-      participantes || null, 
-      estado || 'activo'
-    ], function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.status(201).json({
-        id: this.lastID,
-        message: 'Horario creado exitosamente'
-      });
+    // Crear el nuevo horario
+    const nuevoHorario = new Horario({
+      fecha,
+      hora_inicio,
+      hora_fin,
+      titulo,
+      descripcion: descripcion || null,
+      organizador: organizador || null,
+      participantes: participantes || null,
+      estado: estado || 'activo'
     });
-  });
+
+    const horarioGuardado = await nuevoHorario.save();
+
+    res.status(201).json({
+      id: horarioGuardado._id.toString(),
+      message: 'Horario creado exitosamente'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT - Actualizar un horario
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const { fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado } = req.body;
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fecha, hora_inicio, hora_fin, titulo, descripcion, organizador, participantes, estado } = req.body;
 
-  // Verificar si existe
-  db.getDb().get('SELECT * FROM horarios WHERE id = ?', [id], (err, existing) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400).json({ error: 'ID inválido' });
       return;
     }
+
+    // Verificar si existe
+    const existing = await Horario.findById(id);
+
     if (!existing) {
       res.status(404).json({ error: 'Horario no encontrado' });
       return;
@@ -128,103 +164,72 @@ router.put('/:id', (req, res) => {
       const newFecha = fecha || existing.fecha;
       const newHoraInicio = hora_inicio || existing.hora_inicio;
       const newHoraFin = hora_fin || existing.hora_fin;
+      const newEstado = estado || existing.estado;
 
-      const checkConflictQuery = `
-        SELECT * FROM horarios 
-        WHERE fecha = ? 
-        AND id != ?
-        AND estado = 'activo'
-        AND (
-          (hora_inicio <= ? AND hora_fin > ?) OR
-          (hora_inicio < ? AND hora_fin >= ?) OR
-          (hora_inicio >= ? AND hora_fin <= ?)
-        )
-      `;
+      const conflicts = await verificarConflicto(newFecha, newHoraInicio, newHoraFin, newEstado, id);
 
-      db.getDb().all(checkConflictQuery, [newFecha, id, newHoraInicio, newHoraInicio, newHoraFin, newHoraFin, newHoraInicio, newHoraFin], (err, conflicts) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
+      if (conflicts && conflicts.length > 0) {
+        const conflictosFormateados = conflicts.map(conflict => ({
+          ...conflict.toObject(),
+          id: conflict._id.toString()
+        }));
 
-        if (conflicts && conflicts.length > 0) {
-          res.status(409).json({ 
-            error: 'Conflicto de horario detectado',
-            conflictos: conflicts
-          });
-          return;
-        }
-
-        updateHorario();
-      });
-    } else {
-      updateHorario();
-    }
-
-    function updateHorario() {
-      const updateQuery = `
-        UPDATE horarios 
-        SET fecha = COALESCE(?, fecha),
-            hora_inicio = COALESCE(?, hora_inicio),
-            hora_fin = COALESCE(?, hora_fin),
-            titulo = COALESCE(?, titulo),
-            descripcion = COALESCE(?, descripcion),
-            organizador = COALESCE(?, organizador),
-            participantes = COALESCE(?, participantes),
-            estado = COALESCE(?, estado),
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `;
-
-      db.getDb().run(updateQuery, [
-        fecha || null,
-        hora_inicio || null,
-        hora_fin || null,
-        titulo || null,
-        descripcion !== undefined ? descripcion : null,
-        organizador !== undefined ? organizador : null,
-        participantes !== undefined ? participantes : null,
-        estado || null,
-        id
-      ], function(err) {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        res.json({
-          id: parseInt(id),
-          message: 'Horario actualizado exitosamente'
+        res.status(409).json({ 
+          error: 'Conflicto de horario detectado',
+          conflictos: conflictosFormateados
         });
-      });
+        return;
+      }
     }
-  });
+
+    // Actualizar solo los campos proporcionados
+    const updateData = {};
+    if (fecha) updateData.fecha = fecha;
+    if (hora_inicio) updateData.hora_inicio = hora_inicio;
+    if (hora_fin) updateData.hora_fin = hora_fin;
+    if (titulo) updateData.titulo = titulo;
+    if (descripcion !== undefined) updateData.descripcion = descripcion;
+    if (organizador !== undefined) updateData.organizador = organizador;
+    if (participantes !== undefined) updateData.participantes = participantes;
+    if (estado) updateData.estado = estado;
+    updateData.updated_at = new Date();
+
+    await Horario.findByIdAndUpdate(id, { $set: updateData });
+
+    res.json({
+      id: id,
+      message: 'Horario actualizado exitosamente'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // DELETE - Eliminar un horario
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  db.getDb().get('SELECT * FROM horarios WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400).json({ error: 'ID inválido' });
       return;
     }
-    if (!row) {
+
+    const horario = await Horario.findById(id);
+
+    if (!horario) {
       res.status(404).json({ error: 'Horario no encontrado' });
       return;
     }
 
-    db.getDb().run('DELETE FROM horarios WHERE id = ?', [id], function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({
-        message: 'Horario eliminado exitosamente'
-      });
+    await Horario.findByIdAndDelete(id);
+
+    res.json({
+      message: 'Horario eliminado exitosamente'
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
-

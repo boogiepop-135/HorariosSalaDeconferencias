@@ -271,21 +271,33 @@ HorariosSalaDeconferencias/
 
 ## 🗄️ Base de Datos
 
-La aplicación usa SQLite y crea automáticamente la base de datos en `database/horarios.db`.
+La aplicación usa **MongoDB** para almacenamiento persistente.
 
-### Esquema de la tabla `horarios`
+### Configuración de MongoDB
 
-- `id` (INTEGER, PRIMARY KEY)
-- `fecha` (TEXT, NOT NULL) - Formato: YYYY-MM-DD
-- `hora_inicio` (TEXT, NOT NULL) - Formato: HH:MM
-- `hora_fin` (TEXT, NOT NULL) - Formato: HH:MM
-- `titulo` (TEXT, NOT NULL)
-- `descripcion` (TEXT)
-- `organizador` (TEXT)
-- `participantes` (TEXT)
-- `estado` (TEXT) - Valores: "activo", "cancelado"
-- `created_at` (DATETIME)
-- `updated_at` (DATETIME)
+Configura la variable de entorno `MONGODB_URL`:
+
+```env
+MONGODB_URL=mongodb://tu-usuario:tu-password@tu-host:puerto/tu-database
+```
+
+En Railway, agrega la variable `MONGODB_URL` en la configuración del servicio.
+
+### Esquema del modelo `Horario`
+
+- `_id` (ObjectId) - ID único de MongoDB
+- `fecha` (String, required) - Formato: YYYY-MM-DD
+- `hora_inicio` (String, required) - Formato: HH:MM
+- `hora_fin` (String, required) - Formato: HH:MM
+- `titulo` (String, required)
+- `descripcion` (String, optional)
+- `organizador` (String, optional)
+- `participantes` (String, optional)
+- `estado` (String) - Valores: "activo", "cancelado" (default: "activo")
+- `created_at` (Date) - Timestamp automático
+- `updated_at` (Date) - Timestamp automático
+
+**Nota:** La API devuelve `id` en lugar de `_id` para mantener compatibilidad con el frontend.
 
 ## 🛡️ Validaciones
 

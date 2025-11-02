@@ -39,9 +39,12 @@ Antes de desplegar, asegúrate de tener:
 ```env
 PORT=5000
 NODE_ENV=production
+MONGODB_URL=mongodb://mongo:ThXDRjdrzlSrlcBPpaDGymWTXqKBgzIv@yamabiko.proxy.rlwy.net:37681
 ```
 
-**Nota:** Railway configura automáticamente el `PORT`, pero puedes especificarlo explícitamente.
+**Nota:** 
+- Railway configura automáticamente el `PORT`, pero puedes especificarlo explícitamente
+- `MONGODB_URL` debe ser la URL completa de tu base de datos MongoDB
 
 ### Paso 4: Configurar Dominio Público (Opcional pero Recomendado)
 
@@ -138,20 +141,12 @@ Railway está configurado para verificar `/api/horarios` como healthcheck. El `r
 }
 ```
 
-### Base de Datos SQLite
+### Base de Datos MongoDB
 
-- La base de datos SQLite se crea automáticamente en `database/horarios.db`
-- **Importante:** En Railway, el sistema de archivos es efímero, por lo que los datos se perderán al redeploy
-- **Para producción persistente, considera migrar a PostgreSQL o MongoDB**
-
-### Migración a PostgreSQL (Recomendado para Producción)
-
-Si necesitas persistencia de datos:
-
-1. En Railway, agrega **PostgreSQL** como servicio
-2. Railway creará automáticamente `DATABASE_URL` o `POSTGRES_URL`
-3. Modifica el código para usar PostgreSQL en lugar de SQLite
-4. O usa un servicio de almacenamiento persistente para SQLite
+- La aplicación usa **MongoDB** para almacenamiento persistente
+- Configura `MONGODB_URL` en las variables de entorno
+- La conexión a MongoDB se realiza automáticamente al iniciar el servidor
+- Los datos se almacenan de forma persistente en MongoDB
 
 ### Build Command
 
