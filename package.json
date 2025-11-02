@@ -1,0 +1,33 @@
+{
+  "name": "horarios-sala-conferencias",
+  "version": "1.0.0",
+  "description": "Aplicación para administrar horarios de sala de conferencias con API para chatbot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "install-client": "cd client && npm install",
+    "install-server": "npm install",
+    "install-all": "npm install && cd client && npm install",
+    "build": "cd client && npm run build",
+    "client": "cd client && npm start"
+  },
+  "keywords": [
+    "conference",
+    "schedule",
+    "management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "sqlite3": "^5.1.6",
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+
