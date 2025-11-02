@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './HorariosManager.css';
 import HorariosList from './HorariosList';
 import HorarioForm from './HorarioForm';
 import { horariosService } from '../services/api';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 
 const HorariosManager = () => {
   const [horarios, setHorarios] = useState([]);
@@ -14,11 +12,7 @@ const HorariosManager = () => {
   const [editingHorario, setEditingHorario] = useState(null);
   const [fechaFiltro, setFechaFiltro] = useState('');
 
-  useEffect(() => {
-    loadHorarios();
-  }, [fechaFiltro]);
-
-  const loadHorarios = async () => {
+  const loadHorarios = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -30,7 +24,11 @@ const HorariosManager = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fechaFiltro]);
+
+  useEffect(() => {
+    loadHorarios();
+  }, [loadHorarios]);
 
   const handleCreate = () => {
     setEditingHorario(null);
@@ -79,8 +77,6 @@ const HorariosManager = () => {
     setShowForm(false);
     setEditingHorario(null);
   };
-
-  const hoy = format(new Date(), 'yyyy-MM-dd');
 
   return (
     <div className="horarios-manager">

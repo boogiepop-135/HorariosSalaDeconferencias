@@ -68,7 +68,9 @@ npm start
 
 ## 📡 API REST para Chatbot
 
-La API está disponible en `http://localhost:5000/api/horarios`
+La API está disponible en:
+- **Producción:** `https://horariossaladeconferencias-production.up.railway.app/api/horarios`
+- **Local:** `http://localhost:5000/api/horarios`
 
 ### Endpoints
 

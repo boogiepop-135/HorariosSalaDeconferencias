@@ -4,6 +4,12 @@ Esta documentación está específicamente diseñada para la integración del ch
 
 ## 🔗 URL Base
 
+**Producción:**
+```
+https://horariossaladeconferencias-production.up.railway.app/api/horarios
+```
+
+**Local (desarrollo):**
 ```
 http://localhost:5000/api/horarios
 ```
